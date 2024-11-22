@@ -9,6 +9,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <time.h>
 
 #define PORT 4221
 #define BUFFER_SIZE 1024
@@ -212,12 +213,14 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
     	path[strlen(path) + 1] = '\0';
     }
 	printf("Path : %s\n", path);
+	printf("Method : %s\n", splitedRequestLine[0]);
+
     // Envoyer un message au client
 	memset(&message, '\0', sizeof message);
 
-    if(strcmp(path, "/") == 0) {
+    if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strcmp(path, "/") == 0) {
       strncpy(message, "HTTP/1.1 200 OK\r\n\r\n", sizeof(message));
-    }else if(strncmp(path, "/echo/", strlen("/echo/")) == 0) {
+    }else if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strncmp(path, "/echo/", strlen("/echo/")) == 0) {
     	char splitedPath[10][BUFFER_SIZE];
     	char *delimiterPath = "/";
     	split_into_array(path, delimiterPath, splitedPath);
@@ -225,11 +228,11 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
     	printf("Path : %s\n", splitedPath[1]);
     	printf("Path : %s\n", splitedPath[2]);
     	snprintf(message, BUFFER_SIZE+200, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", strlen(splitedPath[1]), splitedPath[1]);
-    }else if(strcmp(path, "/user-agent/") == 0) {
+    }else if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strcmp(path, "/user-agent/") == 0) {
     	char userAgent[BUFFER_SIZE];
         get_value_in_str(request_read[2], userAgent, BUFFER_SIZE, "User-Agent: ");
     	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", strlen(userAgent), userAgent);
-    }else if(strncmp(path, "/files/", strlen("/files/")) == 0){
+    }else if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strncmp(path, "/files/", strlen("/files/")) == 0){
     	char splitedPath[10][BUFFER_SIZE];
     	char *delimiterPath = "/";
     	split_into_array(path, delimiterPath, splitedPath);
@@ -249,7 +252,26 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
         else{
         	strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
         }
-    }
+    }else if(strncmp(splitedRequestLine[0], "POST", 4) == 0 && strncmp(path, "/files/", strlen("/files/")) == 0){
+    	char splitedPath[10][BUFFER_SIZE];
+    	char *delimiterPath = "/";
+    	split_into_array(path, delimiterPath, splitedPath);
+    	printf("Path : %s\n", splitedPath[0]);
+    	printf("Path : %s\n", splitedPath[1]);
+    	printf("Path : %s\n", splitedPath[2]);
+    	char filename[BUFFER_SIZE] = "/tmp/data/codecrafters.io/http-server-tester/";
+    	strcat(filename, splitedPath[1]);
+    	printf("Filename : %s\n", filename);
+    	FILE *file;
+    	if((file = fopen(filename, "w")) != NULL) {
+            fprintf(file, "%s", request_read[6]);
+    		snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 201 Created\r\n\r\n");
+    		fclose(file);
+    	}
+    	else{
+    		strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
+    	}
+     }
     else{
       strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
     }
