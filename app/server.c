@@ -1,5 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <netdb.h>
+#include <sys/select.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
@@ -59,7 +62,10 @@ int main() {
 	fd_max = server_fd; // Le descripteur le plus grand est forcément celui de notre seule socket
 	printf("[Server] Set up select fd sets\n");
 
-    while(1){
+    time_t start_time = time(NULL);
+    time_t end_wait = start_time + 10;
+
+    while(start_time < end_wait) {
     	read_fds = all_sockets;
     	// Timeout de 2 secondes pour select()
     	timer.tv_sec = 2;
