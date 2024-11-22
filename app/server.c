@@ -11,27 +11,6 @@
 #define MAX_READ_SIZE 10  // Taille maximale du tableau
 #define CRLF "\r\n"
 
-//void str_split(const char* str, char delim, char* path, int index_delimiter) {
-//	int delimiter_count = 0;
-//	int j = 0;
-//	int k = 0;
-//	while (str[k] != '\0') {
-//		if (str[k] == delim) {
-//            delimiter_count++;
-//            if(delimiter_count == index_delimiter) {
-//              path[j] = '\0';
-//              break;
-//            }
-//            path = "";
-//			j = 0;
-//		}else{
-//			path[j] = str[k];
-//			j++;
-//        }
-//		k++;
-//	}
-//}
-
 int split_into_array(const char *str, const char *delim, char result[][BUFFER_SIZE]) {
 	char buffer[BUFFER_SIZE]; // Copie de la chaîne originale pour ne pas la modifier
 	strncpy(buffer, str, sizeof(buffer));
@@ -136,12 +115,24 @@ int main() {
     //str_split(request_read[0], delimiter, path, 2);
     split_into_array(request_read[0], delimiter, splitedLine);
     char *path = splitedLine[1];
+    if (strcmp(&path[strlen(path)-1], "/") != 0) {
+    	path[strlen(path)] = '/';
+    	path[strlen(path) + 1] = '\0';
+    }
 	printf("Path : %s\n", path);
     // Envoyer un message au client
-    char message[100];
+    char message[BUFFER_SIZE+200];
     message[0] = '\0';
     if(strcmp(path, "/") == 0) {
       strncpy(message, "HTTP/1.1 200 OK\r\n\r\n", sizeof(message));
+    }else if(strncmp(path, "/echo/", strlen("/echo/")) == 0) {
+    	char splitedPath[10][BUFFER_SIZE];
+    	char *delimiterPath = "/";
+    	split_into_array(path, delimiterPath, splitedPath);
+    	printf("Path : %s\n", splitedPath[0]);
+    	printf("Path : %s\n", splitedPath[1]);
+    	printf("Path : %s\n", splitedPath[2]);
+    	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", strlen(splitedPath[1]), splitedPath[1]);
     }
     else{
       strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
