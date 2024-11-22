@@ -17,8 +17,9 @@ int main() {
 
 	// Uncomment this block to pass the first stage
 
-	 int server_fd, client_addr_len;
+	 int server_fd, client_addr_len, client_socket;
 	 struct sockaddr_in client_addr;
+
 
 	 server_fd = socket(AF_INET, SOCK_STREAM, 0);
 	 if (server_fd == -1) {
@@ -53,8 +54,17 @@ int main() {
 	 printf("Waiting for a client to connect...\n");
 	 client_addr_len = sizeof(client_addr);
 
-	 accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
+	 client_socket = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
+
+	if (client_socket < 0) {
+          perror("Erreur lors de l'acceptation de la connexion");
+          close(server_fd); return 1;
+    }
 	 printf("Client connected\n");
+    // Envoyer un message au client
+    const char* message = "HTTP/1.1 200 OK\r\n\r\n";
+    send(client_socket, message, strlen(message), 0);
+    printf("Message envoyé au client .\n");
 
 	 close(server_fd);
 
