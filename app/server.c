@@ -144,7 +144,7 @@ int main() {
       strncpy(message, "HTTP/1.1 200 OK\r\n\r\n", sizeof(message));
     }
     else{
-      strncpy(message, "HTTP/1.1 404 Not Found\r\n", sizeof(message)-1);
+      strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
     }
     send(client_fd, message, strlen(message), 0);
     printf("Message envoyé au client .\n");
