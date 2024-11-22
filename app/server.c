@@ -33,6 +33,27 @@ int split_into_array(const char *str, const char *delim, char result[][BUFFER_SI
 	return count; // Retourner le nombre de tokens
 }
 
+void get_value_in_str(const char *input, char *output, size_t max_len, char *prefix) {
+	const char *start = strstr(input, prefix); // Trouver "User-Agent: "
+	if (start != NULL) {
+		start += strlen(prefix); // Avancer au début de la valeur
+		const char *end = strstr(start, "\r\n"); // Trouver la fin de la ligne
+		if (end != NULL) {
+			size_t len = end - start;
+			if (len >= max_len) len = max_len - 1; // Limiter la taille pour éviter un débordement
+			strncpy(output, start, len);
+			output[len] = '\0'; // Assurez-vous que la chaîne est terminée
+		} else {
+			// Si "\r\n" est introuvable, copier jusqu'à la fin
+			strncpy(output, start, max_len - 1);
+			output[max_len - 1] = '\0';
+		}
+	} else {
+		// Si "User-Agent: " est introuvable
+		output[0] = '\0';
+	}
+}
+
 int main() {
 	// Disable output buffering
 	setbuf(stdout, NULL);
@@ -110,11 +131,11 @@ int main() {
 	for (i = 0; i < 7; i++) {
 		printf("%d : %s\n", i, request_read[i]);
 	}
-    char splitedLine[5][BUFFER_SIZE];
+    char splitedRequestLine[5][BUFFER_SIZE];
     char *delimiter = " ";
     //str_split(request_read[0], delimiter, path, 2);
-    split_into_array(request_read[0], delimiter, splitedLine);
-    char *path = splitedLine[1];
+    split_into_array(request_read[0], delimiter, splitedRequestLine);
+    char *path = splitedRequestLine[1];
     if (strcmp(&path[strlen(path)-1], "/") != 0) {
     	path[strlen(path)] = '/';
     	path[strlen(path) + 1] = '\0';
@@ -132,7 +153,11 @@ int main() {
     	printf("Path : %s\n", splitedPath[0]);
     	printf("Path : %s\n", splitedPath[1]);
     	printf("Path : %s\n", splitedPath[2]);
-    	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", strlen(splitedPath[1]), splitedPath[1]);
+    	snprintf(message, BUFFER_SIZE+200, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", strlen(splitedPath[1]), splitedPath[1]);
+    }else if(strcmp(path, "/user-agent/") == 0) {
+    	char userAgent[BUFFER_SIZE];
+        get_value_in_str(request_read[2], userAgent, BUFFER_SIZE, "User-Agent: ");
+    	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", strlen(userAgent), userAgent);
     }
     else{
       strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
