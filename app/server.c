@@ -236,8 +236,9 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
     	printf("Path : %s\n", splitedPath[0]);
     	printf("Path : %s\n", splitedPath[1]);
     	printf("Path : %s\n", splitedPath[2]);
-        char filename[BUFFER_SIZE] = "/tmp/";
+        char filename[BUFFER_SIZE] = "/tmp/data/codecrafters.io/http-server-tester/";
         strcat(filename, splitedPath[1]);
+        printf("Filename : %s\n", filename);
         FILE *file;
         if((file = fopen(filename, "r")) != NULL) {
             char fileBuffer[800];
