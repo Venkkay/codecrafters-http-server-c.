@@ -229,6 +229,25 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
     	char userAgent[BUFFER_SIZE];
         get_value_in_str(request_read[2], userAgent, BUFFER_SIZE, "User-Agent: ");
     	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", strlen(userAgent), userAgent);
+    }else if(strncmp(path, "/files/", strlen("/files/")) == 0){
+    	char splitedPath[10][BUFFER_SIZE];
+    	char *delimiterPath = "/";
+    	split_into_array(path, delimiterPath, splitedPath);
+    	printf("Path : %s\n", splitedPath[0]);
+    	printf("Path : %s\n", splitedPath[1]);
+    	printf("Path : %s\n", splitedPath[2]);
+        char filename[BUFFER_SIZE] = "/tmp/";
+        strcat(filename, splitedPath[1]);
+        FILE *file;
+        if((file = fopen(filename, "r")) != NULL) {
+            char fileBuffer[800];
+            fgets(fileBuffer, 800, file);
+        	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %lu\r\n\r\n%s", strlen(fileBuffer), fileBuffer);
+        	fclose(file);
+        }
+        else{
+        	strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
+        }
     }
     else{
       strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
