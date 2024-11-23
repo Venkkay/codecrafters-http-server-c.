@@ -262,15 +262,18 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
     	char filename[BUFFER_SIZE] = "/tmp/data/codecrafters.io/http-server-tester/";
     	strcat(filename, splitedPath[1]);
     	printf("Filename : %s\n", filename);
+        int index_data = 0;
+        for(int i = 0; i < 7; i++){
+        	if(request_read[i][0] != '\0'){
+                  index_data = i;
+            }
+        }
     	FILE *file;
-    	if((file = fopen(filename, "w")) != NULL) {
-            fprintf(file, "%s", request_read[6]);
-    		snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 201 Created\r\n\r\n");
-    		fclose(file);
-    	}
-    	else{
-    		strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
-    	}
+    	file = fopen(filename, "w");
+    	printf("Data : %s\n", request_read[index_data]);
+    	fprintf(file, "%s", request_read[index_data]);
+    	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 201 Created\r\n\r\n");
+    	fclose(file);
      }
     else{
       strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
