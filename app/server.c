@@ -218,8 +218,25 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
     // Envoyer un message au client
 	memset(&message, '\0', sizeof message);
 
+	int index_encoding_field = -1;
+	for(int i = 0; i < 7; i++){
+		if(strstr(request_read[i], "Accept-Encoding") != NULL){
+			index_encoding_field = i;
+		}
+	}
+
+    char message_encoding[50] = "";
+    if(index_encoding_field != -1){
+    	char client_encoding[30];
+    	get_value_in_str(request_read[index_encoding_field], client_encoding, 30, "Accept-Encoding: ");
+        if(strcmp(client_encoding, "gzip") == 0){
+        	snprintf(message_encoding, 50, "Content-Encoding: %s\r\n", client_encoding);
+        }
+    }
+
+
     if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strcmp(path, "/") == 0) {
-      strncpy(message, "HTTP/1.1 200 OK\r\n\r\n", sizeof(message));
+    	snprintf(message, BUFFER_SIZE+200, "HTTP/1.1 200 OK\r\n%s\r\n", message_encoding);
     }else if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strncmp(path, "/echo/", strlen("/echo/")) == 0) {
     	char splitedPath[10][BUFFER_SIZE];
     	char *delimiterPath = "/";
@@ -227,11 +244,11 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
     	printf("Path : %s\n", splitedPath[0]);
     	printf("Path : %s\n", splitedPath[1]);
     	printf("Path : %s\n", splitedPath[2]);
-    	snprintf(message, BUFFER_SIZE+200, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", strlen(splitedPath[1]), splitedPath[1]);
+    	snprintf(message, BUFFER_SIZE+200, "HTTP/1.1 200 OK\r\n%sContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", message_encoding, strlen(splitedPath[1]), splitedPath[1]);
     }else if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strcmp(path, "/user-agent/") == 0) {
-    	char userAgent[BUFFER_SIZE];
-        get_value_in_str(request_read[2], userAgent, BUFFER_SIZE, "User-Agent: ");
-    	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", strlen(userAgent), userAgent);
+    	char userAgent[50];
+        get_value_in_str(request_read[2], userAgent, 50, "User-Agent: ");
+     	snprintf(message, BUFFER_SIZE+200, "HTTP/1.1 200 OK\r\n%sContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", message_encoding, strlen(userAgent), userAgent);
     }else if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strncmp(path, "/files/", strlen("/files/")) == 0){
     	char splitedPath[10][BUFFER_SIZE];
     	char *delimiterPath = "/";
@@ -246,7 +263,7 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
         if((file = fopen(filename, "r")) != NULL) {
             char fileBuffer[800];
             fgets(fileBuffer, 800, file);
-        	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %lu\r\n\r\n%s", strlen(fileBuffer), fileBuffer);
+        	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 200 OK\r\n%sContent-Type: application/octet-stream\r\nContent-Length: %lu\r\n\r\n%s", message_encoding, strlen(fileBuffer), fileBuffer);
         	fclose(file);
         }
         else{
@@ -272,7 +289,7 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
     	file = fopen(filename, "w");
     	printf("Data : %s\n", request_read[index_data]);
     	fprintf(file, "%s", request_read[index_data]);
-    	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 201 Created\r\n\r\n");
+    	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 201 Created\r\n%s\r\n", message_encoding);
     	fclose(file);
      }
     else{
