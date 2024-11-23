@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <time.h>
+#include <ctype.h>
 
 #define PORT 4221
 #define BUFFER_SIZE 1024
@@ -21,8 +22,7 @@ void accept_new_connection(int server_socket, fd_set *all_sockets, int *fd_max);
 void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int server_socket);
 int split_into_array(const char *str, const char *delim, char result[][BUFFER_SIZE]);
 void get_value_in_str(const char *input, char *output, int max_len, char *prefix);
-
-
+void trimString(char *str);
 
 int main() {
 	// Disable output buffering
@@ -228,9 +228,23 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
     char message_encoding[50] = "";
     if(index_encoding_field != -1){
     	char client_encoding[30];
+    	char list_encoding[30] = "";
+        char splited_encoding[5][BUFFER_SIZE];
+        int count_encoding = 0;
     	get_value_in_str(request_read[index_encoding_field], client_encoding, 30, "Accept-Encoding: ");
-        if(strcmp(client_encoding, "gzip") == 0){
-        	snprintf(message_encoding, 50, "Content-Encoding: %s\r\n", client_encoding);
+        split_into_array(client_encoding, ",", splited_encoding);
+        for(int i = 0; i < 5; i++){
+            trimString(splited_encoding[i]);
+        	if(strcmp(splited_encoding[i], "gzip") == 0){
+                count_encoding++;
+                if(count_encoding >= 2){
+                	strcat(list_encoding, ",");
+                }
+        		strcat(list_encoding, splited_encoding[i]);
+        	}
+        }
+        if(count_encoding >= 1){
+        	snprintf(message_encoding, 50, "Content-Encoding: %s\r\n", list_encoding);
         }
     }
 
@@ -238,7 +252,7 @@ void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int serv
     if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strcmp(path, "/") == 0) {
     	snprintf(message, BUFFER_SIZE+200, "HTTP/1.1 200 OK\r\n%s\r\n", message_encoding);
     }else if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strncmp(path, "/echo/", strlen("/echo/")) == 0) {
-    	char splitedPath[10][BUFFER_SIZE];
+    	char splitedPath[10][BUFFER_SIZE] = {""};
     	char *delimiterPath = "/";
     	split_into_array(path, delimiterPath, splitedPath);
     	printf("Path : %s\n", splitedPath[0]);
@@ -328,17 +342,16 @@ int split_into_array(const char *str, const char *delim, char result[][BUFFER_SI
 }
 
 void get_value_in_str(const char *input, char *output, int max_len, char *prefix) {
-	const char *start = strstr(input, prefix); // Trouver "User-Agent: "
+	const char *start = strstr(input, prefix);
 	if (start != NULL) {
-		start += strlen(prefix); // Avancer au début de la valeur
-		const char *end = strstr(start, "\r\n"); // Trouver la fin de la ligne
+		start += strlen(prefix);
+		const char *end = strstr(start, "\r\n");
 		if (end != NULL) {
 			int len = end - start;
-			if (len >= max_len) len = max_len - 1; // Limiter la taille pour éviter un débordement
+			if (len >= max_len) len = max_len - 1;
 			strncpy(output, start, len);
-			output[len] = '\0'; // Assurez-vous que la chaîne est terminée
+			output[len] = '\0';
 		} else {
-			// Si "\r\n" est introuvable, copier jusqu'à la fin
 			strncpy(output, start, max_len - 1);
 			output[max_len - 1] = '\0';
 		}
@@ -347,4 +360,14 @@ void get_value_in_str(const char *input, char *output, int max_len, char *prefix
 		output[0] = '\0';
 	}
 }
+void trimString(char *str) {
 
+	while (isspace((unsigned char)str[0]))
+
+		memmove(str, str + 1, strlen(str));
+
+	while (isspace((unsigned char)str[strlen(str) - 1]))
+
+		str[strlen(str) - 1] = '\0';
+
+}
