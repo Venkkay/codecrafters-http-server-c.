@@ -1,0 +1,4 @@
+/home/lucas/.local/share/JetBrains/Toolbox/apps/clion/bin/cmake/linux/x64/bin/cmake -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MAKE_PROGRAM=/home/lucas/.local/share/JetBrains/Toolbox/apps/clion/bin/ninja/linux/x64/ninja -G Ninja -S /data/Documents/Scolaire/Ing3/Hardware_software_interface/codecrafters-http-server-c -B /data/Documents/Scolaire/Ing3/Hardware_software_interface/codecrafters-http-server-c/cmake-build-debug
+-- Configuring done (0.0s)
+-- Generating done (0.0s)
+-- Build files have been written to: /data/Documents/Scolaire/Ing3/Hardware_software_interface/codecrafters-http-server-c/cmake-build-debug

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <zlib.h>
 #include <netdb.h>
 #include <sys/select.h>
 #include <sys/types.h>
@@ -11,31 +12,31 @@
 #include <unistd.h>
 #include <time.h>
 #include <ctype.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+
+#include "server.h"
+#include "http.h"
+#include "helpers.h"
+
 
 #define PORT 4221
-#define BUFFER_SIZE 1024
 #define MAX_READ_SIZE 10  // Taille maximale du tableau
 #define CRLF "\r\n"
+#define COMMA ","
 
-int create_server_socket(void);
-void accept_new_connection(int server_socket, fd_set *all_sockets, int *fd_max);
-void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int server_socket);
-int split_into_array(const char *str, const char *delim, char result[][BUFFER_SIZE]);
-void get_value_in_str(const char *input, char *output, int max_len, char *prefix);
-void trimString(char *str);
 
-int main() {
-	// Disable output buffering
+int main(int argc, char **argv) {
 	setbuf(stdout, NULL);
  	setbuf(stderr, NULL);
 
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	printf("Logs from your program will appear here!\n");
 
-	// Uncomment this block to pass the first stage
-
-	 int server_fd, client_addr_len, client_fd, status;
-	 struct sockaddr_in client_addr;
+	if (argc == 3) {
+		const char *directory = argv[2];
+		printf("directory: %s\n", directory);
+		chdir(directory);
+	}
 
 	// Pour surveiller les sockets clients :
 	fd_set all_sockets; // Ensemble de toutes les sockets du serveur
@@ -44,12 +45,12 @@ int main() {
 	struct timeval timer;
 
 
-	 server_fd = create_server_socket();
+	const int server_fd = create_server_socket();
 	 if (server_fd == -1) {
-		return (1);
+		return 1;
 	 }
 
-	 int connection_backlog = 5;
+	const int connection_backlog = 5;
 	 if (listen(server_fd, connection_backlog) != 0) {
 	 	printf("Listen failed: %s \n", strerror(errno));
 	 	return 1;
@@ -63,77 +64,68 @@ int main() {
 	fd_max = server_fd; // Le descripteur le plus grand est forcément celui de notre seule socket
 	printf("[Server] Set up select fd sets\n");
 
-    time_t start_time = time(NULL);
-    time_t end_wait = start_time + 10;
+	//const time_t start_time = time(NULL);
+	//const time_t end_wait = start_time + 10;
 
-    while(start_time < end_wait) {
+    while(1) {
     	read_fds = all_sockets;
     	// Timeout de 2 secondes pour select()
     	timer.tv_sec = 2;
     	timer.tv_usec = 0;
 
-    	// Surveille les sockets prêtes à être lues
-    	status = select(fd_max + 1, &read_fds, NULL, NULL, &timer);
+	    const int status = select(fd_max + 1, &read_fds, NULL, NULL, &timer);
     	if (status == -1) {
     		fprintf(stderr, "[Server] Select error: %s\n", strerror(errno));
     		exit(1);
     	}
-    	else if (status == 0) {
-    		// Aucun descipteur de fichier de socket n'est prêt pour la lecture
-    		printf("[Server] Waiting...\n");
-    		continue;
-    	}
+	    if (status == 0) {
+		    printf("[Server] Waiting...\n");
+		    continue;
+	    }
 
-    	for (int i = 0; i <= fd_max; i++) {
+	    for (int i = 0; i <= fd_max; i++) {
     		if (FD_ISSET(i, &read_fds) != 1) {
-    			// Le fd i n'est pas une socket à surveiller
-    			// on s'arrête là et on continue la boucle
     			continue ;
     		}
     		printf("[%d] Ready for I/O operation\n", i);
-    		// La socket est prête à être lue !
     		if (i == server_fd) {
-    			// La socket est notre socket serveur qui écoute le port
     			accept_new_connection(server_fd, &all_sockets, &fd_max);
     		}
     		else {
-    			// La socket est une socket client, on va la lire
-    			read_data_from_socket(i, &all_sockets, fd_max, server_fd);
+    			if(read_data_from_socket(i, &all_sockets, fd_max, server_fd) != 0) {
+    				close(i);
+    				FD_CLR(i, &all_sockets);
+    			}
     		}
     	}
     }
-
+	return 0;
 }
 
-// Renvoie la socket du serveur liée à l'adresse et au port qu'on veut écouter
+// Renvoie le socket du serveur liée à l'adresse et au port qu'on veut écouter
 int create_server_socket(void) {
-	struct sockaddr_in sa;
-	//int socket_fd;
-	int status;
-	int server_fd;
 
-	struct sockaddr_in serv_addr = { .sin_family = AF_INET ,
-								 .sin_port = htons(PORT),
-								 .sin_addr = { htonl(INADDR_ANY) },
-								};
+	struct sockaddr_in serv_addr = {
+		.sin_family = AF_INET ,
+		.sin_port = htons(PORT),
+		.sin_addr = { htonl(INADDR_ANY) },
+	};
 
-	// Création de la socket
-	server_fd = socket(AF_INET, SOCK_STREAM, 0);
+	// Création du socket
+	const int server_fd = socket(AF_INET, SOCK_STREAM, 0);
 	if (server_fd == -1) {
 		printf("Socket creation failed: %s...\n", strerror(errno));
 		return 1;
 	}
 	printf("[Server] Created server socket fd: %d\n", server_fd);
 
-	// Since the tester restarts your program quite often, setting SO_REUSEADDR
-	// ensures that we don't run into 'Address already in use' errors
-	int reuse = 1;
+	const int reuse = 1;
 	if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
 		printf("SO_REUSEADDR failed: %s \n", strerror(errno));
 		return 1;
 	}
 
-	// Liaison de la socket à l'adresse et au port
+	// Liaison du socket à l'adresse et au port
 	if (bind(server_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) != 0) {
 		printf("Bind failed: %s \n", strerror(errno));
 		return 1;
@@ -143,17 +135,14 @@ int create_server_socket(void) {
 }
 
 
-// Accepte une nouvelle connexion et ajoute la nouvelle socket à l'ensemble des sockets
+// Accepte une nouvelle connexion et ajoute le nouvel socket à l'ensemble des sockets
 void accept_new_connection(int server_fd, fd_set *all_sockets, int *fd_max)
 {
-	int client_fd, client_addr_len;
+	int client_addr_len;
 	struct sockaddr_in client_addr;
-	char msg_to_send[BUFSIZ];
-	int status;
 
 	client_addr_len = sizeof(client_addr);
-	//client_fd = accept(server_fd, NULL, NULL);
-	client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
+	const int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 
 	if (client_fd < 0) {
 		printf("[Server] Accept error: %s\n", strerror(errno));
@@ -164,210 +153,249 @@ void accept_new_connection(int server_fd, fd_set *all_sockets, int *fd_max)
 		*fd_max = client_fd; // Met à jour la plus grande socket
 	}
 	printf("[Server] Accepted new connection on client socket %d.\n", client_fd);
-//	memset(&msg_to_send, '\0', sizeof msg_to_send);
-//	sprintf(msg_to_send, "Welcome. You are client fd [%d]\n", client_fd);
-//	status = send(client_fd, msg_to_send, strlen(msg_to_send), 0);
-//	if (status == -1) {
-//		fprintf(stderr, "[Server] Send error to client %d: %s\n", client_fd, strerror(errno));
-//	}
 }
 
-void read_data_from_socket(int socket, fd_set *all_sockets, int fd_max, int server_socket)
+int read_data_from_socket(const int socket, fd_set *all_sockets, int fd_max, int server_socket)
 {
-
-	int status;
     char buffer[BUFFER_SIZE];
-	memset(&buffer, '\0', sizeof buffer);
-	char message[BUFFER_SIZE+200];
-    char request_read[7][BUFFER_SIZE];
-    char *token;
 
-	// Recevoir le message du serveur
-    int bytes_received = recv(socket, buffer, BUFFER_SIZE - 1, 0);
-    if (bytes_received <= 0) {
-      	perror("Erreur lors de la récepti on du message");
-	    if (bytes_received == 0) {
-    		printf("[%d] Client socket closed connection.\n", socket);
-	    }
-	    else {
-    		fprintf(stderr, "[Server] Recv error: %s\n", strerror(errno));
-	    }
-	    close(socket); // Ferme la socket
-	    FD_CLR(socket, all_sockets); // Enlève la socket de l'ensemble
-    }
-	buffer[bytes_received] = '\0'; // Terminer la chaîne reçue
-	printf("[%d] Got message: %s", socket, buffer);
+	request_t request = {};
 
-	int i = 0;
-    split_into_array(buffer, CRLF, request_read);
-	for (i = 0; i < 7; i++) {
-		printf("%d : %s\n", i, request_read[i]);
+	size_t line_receive_length = receive_line(socket, buffer, sizeof(buffer));
+	if(line_receive_length == -1) {
+		perror("[Server] Error receiving request header");
+		return 1;
 	}
-    char splitedRequestLine[5][BUFFER_SIZE];
-    char *delimiter = " ";
-    //str_split(request_read[0], delimiter, path, 2);
-    split_into_array(request_read[0], delimiter, splitedRequestLine);
-    char *path = splitedRequestLine[1];
-    if (strcmp(&path[strlen(path)-1], "/") != 0) {
-    	path[strlen(path)] = '/';
-    	path[strlen(path) + 1] = '\0';
+
+	char *method = strtok(buffer, " ");
+	char *path = strtok(method + strlen(method) + 1, " ");
+	char *version = strtok(path + strlen(path) + 1, " ");
+
+	request.method = method_value(method);
+	const size_t path_length = strlen(path);
+	if(path_length > 1 && path[path_length-1] == '/') {
+		path[path_length-1] = '\0';
+	}
+	strncpy(request.path, path, strlen(path));
+	printf("method=`%s`, method=%d, path=`%s`, request.path=`%s` version=`%s`\n", method, request.method, path, request.path, version);
+
+	while (1) {
+		line_receive_length = receive_line(socket, buffer, sizeof(buffer));
+		if (line_receive_length == -1) {
+			perror("[Server] Error receiving request headers");
+			return 1;
+		}
+
+		if (line_receive_length == 0) {
+			break;
+		}
+
+		const char *key = strtok(buffer, ": ");
+		const char *value = key + strlen(key) + 1;
+
+		while (*value == ' ') {
+			++value;
+		}
+
+		request.headers = headers_add(request.headers, key, value);
+		printf("key=`%s` value=`%s`\n", request.headers->key, request.headers->value);
+	}
+
+	if (request.method == POST) {
+		const char* content_length_string = headers_get(request.headers, HEADER_KEY_CONTENT_LENGTH);
+		char *end_ptr_content_length;
+		unsigned long content_length = strtol(content_length_string ? content_length_string : "0", &end_ptr_content_length, 10);
+		content_length = content_length < BODY_MAX_SIZE - 1 ? content_length : BODY_MAX_SIZE - 1;
+
+		char *body = malloc(content_length+1);
+
+		if (recv(socket, body, content_length, 0) == -1) {
+			perror("[Server] Error receiving request body");
+			return 1;
+		}
+
+		strncpy(request.body, body, sizeof(request.body));
+		request.body[content_length] = '\0';
+		request.body_length = content_length;
+		free(body);
+	}
+
+	response_t response = {};
+	response.status = NOT_FOUND;
+	response.body_length = 0;
+	printf("Endpoints\n");
+	printf("Path: %s\n", request.path);
+	if(request.method  == GET && strcmp("/", request.path) == 0) {
+		response.status = OK;
+    }else if(request.method  == GET && strncmp(PATH_ECHO, request.path, strlen(PATH_ECHO)) == 0) {
+		const char *body = strdup(request.path + strlen(PATH_ECHO));
+
+    	printf("Body: %s\n", body);
+
+		response.status = OK;
+    	response.headers = headers_add(response.headers, "Content-Type", "text/plain");
+    	strncpy(response.body, body, strlen(body));
+    	response.body_length = strlen(body);
+    }else if(request.method  == GET && strcmp(PATH_USER_AGENT, request.path) == 0) {
+		const char *body = strdup(headers_get(request.headers, "User-Agent"));
+
+    	printf("User agent: %s\n", body);
+
+    	response.status = OK;
+    	response.headers = headers_add(response.headers, "Content-Type", "text/plain");
+    	strncpy(response.body, body, sizeof(response.body));
+    	response.body_length = strlen(body);
+    }else if(strncmp(PATH_FILES, request.path, strlen(PATH_FILES)) == 0){
+		const char *request_path = request.path + strlen(PATH_FILES);
+    	if(request.method  == GET) {
+		    const unsigned char* body = read_file_to_response(request_path, &response.status, &response.body_length);
+    		if (body != NULL) {
+    			response.status = OK;
+    			response.headers = headers_add(response.headers, HEADER_KEY_CONTENT_TYPE, HEADER_VAL_APPLICATION_OCTET_STREAM);
+    			memcpy(response.body, body, response.body_length);
+			}
+    	}
+    	else if(request.method == POST) {
+		    const int file = open(request_path, O_WRONLY | O_CREAT | O_TRUNC);
+    		if (file == -1) {
+    			perror("Error opening file");
+    		}else {
+    			printf("Body : %s\n", (char*)request.body);
+    			if(write(file, request.body, request.body_length) == -1) {
+    				perror("Error writing file");
+    			}else {
+    				response.status = CREATED;
+    			};
+    			close(file);
+    		}
+
+    	}
     }
-	printf("Path : %s\n", path);
-	printf("Method : %s\n", splitedRequestLine[0]);
 
-    // Envoyer un message au client
-	memset(&message, '\0', sizeof message);
+	if(strlen(response.body) > 0) {
 
-	int index_encoding_field = -1;
-	for(int i = 0; i < 7; i++){
-		if(strstr(request_read[i], "Accept-Encoding") != NULL){
-			index_encoding_field = i;
+		char* encodings = headers_get(request.headers, HEADER_KEY_ACCEPT_ENCODING);
+		if(encodings) {
+			encoder_t encoder = NULL;
+
+			char* encoding = strtok(encodings, COMMA);
+			while(encoding) {
+				while (*encoding == ' ') {
+					++encoding;
+				}
+				encoder = get_encoder(encoding);
+				if(encoder) {
+					response.headers = headers_add(response.headers, HEADER_KEY_CONTENT_ENCODING, encoding);
+					break;
+				}
+				encoding = strtok(NULL, COMMA);
+			}
+
+			if(encoder) {
+				size_t buffer_size = response.body_length + 128;
+				unsigned char* buffer = malloc(buffer_size);
+				unsigned char* body = response.body;
+				response.body_length = encoder(body, response.body_length, buffer, buffer_size);
+				memcpy(response.body, buffer, response.body_length);
+			}
+		}
+
+		response.headers = headers_add_number(response.headers, HEADER_KEY_CONTENT_LENGTH, response.body_length);
+	}
+
+	memset(buffer, 0, sizeof(buffer));
+	sprintf(buffer, "%s %d %s\r\n", HTTP_VERSION, status_to_code(response.status), status_to_phrase(response.status));
+	//printf("Send 1 line : 1 header : %s -> %s", header->key, header->value);
+
+	if (send(socket, buffer, strlen(buffer), 0) == -1) {
+		perror("[Server] Error sending response header");
+		return 1;
+	}
+
+	printf("Send headers\n");
+
+	header_t *header = response.headers;
+	while (header) {
+		printf("Header : key=`%s` value=`%s`\n", header->key, header->value);
+		memset(buffer, 0, sizeof(buffer));
+		sprintf(buffer, "%s: %s\r\n", header->key, header->value);
+		if (send(socket, buffer, strlen(buffer), 0) == -1) {
+			perror("[Server] Error sending response header");
+			return 1;
+		}
+		header = header->next;
+	}
+
+	printf("Send headers end\n");
+
+	if (send(socket, "\r\n", 2, 0) == -1) {
+		perror("[Server] Error sending response header end");
+		return 1;
+	}
+
+	printf("Send body\n");
+
+	if (strlen(response.body) > 0) {
+		if (send(socket, response.body, response.body_length, 0) == -1) {
+			perror("[Server] Error sending response body");
+			return 1;
 		}
 	}
 
-    char message_encoding[50] = "";
-    if(index_encoding_field != -1){
-    	char client_encoding[30];
-    	char list_encoding[30] = "";
-        char splited_encoding[5][BUFFER_SIZE];
-        int count_encoding = 0;
-    	get_value_in_str(request_read[index_encoding_field], client_encoding, 30, "Accept-Encoding: ");
-        split_into_array(client_encoding, ",", splited_encoding);
-        for(int i = 0; i < 5; i++){
-            trimString(splited_encoding[i]);
-        	if(strcmp(splited_encoding[i], "gzip") == 0){
-                count_encoding++;
-                if(count_encoding >= 2){
-                	strcat(list_encoding, ",");
-                }
-        		strcat(list_encoding, splited_encoding[i]);
-        	}
-        }
-        if(count_encoding >= 1){
-        	snprintf(message_encoding, 50, "Content-Encoding: %s\r\n", list_encoding);
-        }
-    }
+	//free(request.path);
+	clean_headers(request.headers);
+	clean_headers(response.headers);
+	return 0;
+}
 
 
-    if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strcmp(path, "/") == 0) {
-    	snprintf(message, BUFFER_SIZE+200, "HTTP/1.1 200 OK\r\n%s\r\n", message_encoding);
-    }else if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strncmp(path, "/echo/", strlen("/echo/")) == 0) {
-    	char splitedPath[10][BUFFER_SIZE] = {""};
-    	char *delimiterPath = "/";
-    	split_into_array(path, delimiterPath, splitedPath);
-    	printf("Path : %s\n", splitedPath[0]);
-    	printf("Path : %s\n", splitedPath[1]);
-    	printf("Path : %s\n", splitedPath[2]);
-    	snprintf(message, BUFFER_SIZE+200, "HTTP/1.1 200 OK\r\n%sContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", message_encoding, strlen(splitedPath[1]), splitedPath[1]);
-    }else if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strcmp(path, "/user-agent/") == 0) {
-    	char userAgent[50];
-        get_value_in_str(request_read[2], userAgent, 50, "User-Agent: ");
-     	snprintf(message, BUFFER_SIZE+200, "HTTP/1.1 200 OK\r\n%sContent-Type: text/plain\r\nContent-Length: %lu\r\n\r\n%s", message_encoding, strlen(userAgent), userAgent);
-    }else if(strncmp(splitedRequestLine[0], "GET", 3) == 0 && strncmp(path, "/files/", strlen("/files/")) == 0){
-    	char splitedPath[10][BUFFER_SIZE];
-    	char *delimiterPath = "/";
-    	split_into_array(path, delimiterPath, splitedPath);
-    	printf("Path : %s\n", splitedPath[0]);
-    	printf("Path : %s\n", splitedPath[1]);
-    	printf("Path : %s\n", splitedPath[2]);
-        char filename[BUFFER_SIZE] = "/tmp/data/codecrafters.io/http-server-tester/";
-        strcat(filename, splitedPath[1]);
-        printf("Filename : %s\n", filename);
-        FILE *file;
-        if((file = fopen(filename, "r")) != NULL) {
-            char fileBuffer[800];
-            fgets(fileBuffer, 800, file);
-        	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 200 OK\r\n%sContent-Type: application/octet-stream\r\nContent-Length: %lu\r\n\r\n%s", message_encoding, strlen(fileBuffer), fileBuffer);
-        	fclose(file);
-        }
-        else{
-        	strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
-        }
-    }else if(strncmp(splitedRequestLine[0], "POST", 4) == 0 && strncmp(path, "/files/", strlen("/files/")) == 0){
-    	char splitedPath[10][BUFFER_SIZE];
-    	char *delimiterPath = "/";
-    	split_into_array(path, delimiterPath, splitedPath);
-    	printf("Path : %s\n", splitedPath[0]);
-    	printf("Path : %s\n", splitedPath[1]);
-    	printf("Path : %s\n", splitedPath[2]);
-    	char filename[BUFFER_SIZE] = "/tmp/data/codecrafters.io/http-server-tester/";
-    	strcat(filename, splitedPath[1]);
-    	printf("Filename : %s\n", filename);
-        int index_data = 0;
-        for(int i = 0; i < 7; i++){
-        	if(request_read[i][0] != '\0'){
-                  index_data = i;
-            }
-        }
-    	FILE *file;
-    	file = fopen(filename, "w");
-    	printf("Data : %s\n", request_read[index_data]);
-    	fprintf(file, "%s", request_read[index_data]);
-    	snprintf(message, BUFFER_SIZE+100, "HTTP/1.1 201 Created\r\n%s\r\n", message_encoding);
-    	fclose(file);
-     }
-    else{
-      strncpy(message, "HTTP/1.1 404 Not Found\r\n\r\n", sizeof(message)-1);
-    }
-    status = send(socket, message, strlen(message), 0);
-//	if (status == -1) {
-//		fprintf(stderr, "[Server] Send error to client fd %d: %s\n", socket, strerror(errno));
+//void compress_gzip(const char *input, int input_len, unsigned char **output, int *output_len) {
+//	// Estimer une taille maximale pour les données compressées
+//	uLongf max_compressed_size = compressBound(input_len);
+//
+//	// Allouer de la mémoire pour le résultat compressé
+//	*output = malloc(max_compressed_size);
+//	if (*output == NULL) {
+//		fprintf(stderr, "Erreur d'allocation de mémoire pour la compression\n");
+//		exit(EXIT_FAILURE);
 //	}
-    printf("Message envoyé au client .\n");
+//
+//	// Compresser les données
+//	int result = compress2(*output, &max_compressed_size, (const Bytef *)input, input_len, Z_BEST_COMPRESSION);
+//	if (result != Z_OK) {
+//		fprintf(stderr, "Erreur lors de la compression : %d\n", result);
+//		free(*output);
+//		*output = NULL;
+//		*output_len = 0;
+//		exit(EXIT_FAILURE);
+//	}
+//
+//	// Réduire la taille réelle des données compressées
+//	*output_len = max_compressed_size;
+//}
 
+/*
+int compressToGzip(unsigned char* input, int inputSize, unsigned char** output_pointer)
+{
+	int output_size = 128 + inputSize;
+	unsigned char *output = malloc(output_size);
 
+	z_stream zs;
+	zs.zalloc = Z_NULL;
+	zs.zfree = Z_NULL;
+	zs.opaque = Z_NULL;
+	zs.avail_in = inputSize;
+	zs.next_in = input;
+	zs.avail_out = output_size;
+	zs.next_out = output;
+
+	// hard to believe they don't have a macro for gzip encoding, "Add 16" is the best thing zlib can do:
+	// "Add 16 to windowBits to write a simple gzip header and trailer around the compressed data instead of a zlib wrapper"
+	deflateInit2(&zs, Z_DEFAULT_COMPRESSION, Z_DEFLATED, 15 | 16, 8, Z_DEFAULT_STRATEGY);
+	deflate(&zs, Z_FINISH);
+	deflateEnd(&zs);
+
+	*output_pointer = output;
+	return (zs.total_out);
 }
-
-
-int split_into_array(const char *str, const char *delim, char result[][BUFFER_SIZE]) {
-	char buffer[BUFFER_SIZE]; // Copie de la chaîne originale pour ne pas la modifier
-	strncpy(buffer, str, sizeof(buffer));
-	buffer[sizeof(buffer) - 1] = '\0'; // Sécurité contre débordement
-
-	int count = 0; // Compteur de tokens
-	char *part = strtok(buffer, delim);
-
-	while (part != NULL) {
-		if (count >= MAX_READ_SIZE) { // Empêcher de dépasser la capacité
-			fprintf(stderr, "Erreur : trop de tokens\n");
-			return -1;
-		}
-		strncpy(result[count], part, BUFFER_SIZE); // Copier le token dans le tableau
-		result[count][BUFFER_SIZE - 1] = '\0';     // Sécurité de fin de chaîne
-		count++;
-		part = strtok(NULL, delim);
-	}
-
-	return count; // Retourner le nombre de tokens
-}
-
-void get_value_in_str(const char *input, char *output, int max_len, char *prefix) {
-	const char *start = strstr(input, prefix);
-	if (start != NULL) {
-		start += strlen(prefix);
-		const char *end = strstr(start, "\r\n");
-		if (end != NULL) {
-			int len = end - start;
-			if (len >= max_len) len = max_len - 1;
-			strncpy(output, start, len);
-			output[len] = '\0';
-		} else {
-			strncpy(output, start, max_len - 1);
-			output[max_len - 1] = '\0';
-		}
-	} else {
-		// Si "User-Agent: " est introuvable
-		output[0] = '\0';
-	}
-}
-void trimString(char *str) {
-
-	while (isspace((unsigned char)str[0]))
-
-		memmove(str, str + 1, strlen(str));
-
-	while (isspace((unsigned char)str[strlen(str) - 1]))
-
-		str[strlen(str) - 1] = '\0';
-
-}
+*/

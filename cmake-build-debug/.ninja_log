@@ -1,0 +1,6 @@
+# ninja log v6
+10	126	1732743252295990300	CMakeFiles/codecrafters_http_server_c.dir/app/http.c.o	84cc3d27265bfd46
+11	120	1732743252297631600	CMakeFiles/codecrafters_http_server_c.dir/app/helpers.c.o	2403d9db2b899b3f
+35	53	1732660271965914600	codecrafters_http_server_c	fde5c1b705d20878
+2	71	1732744327857438200	build.ninja	511e19e9a05904b9
+2	87	1732743415409070900	CMakeFiles/codecrafters_http_server_c.dir/app/server.c.o	2ff63ddc0e2c427d

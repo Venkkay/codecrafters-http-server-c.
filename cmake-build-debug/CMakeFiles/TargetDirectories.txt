@@ -1,0 +1,3 @@
+/data/Documents/Scolaire/Ing3/Hardware_software_interface/codecrafters-http-server-c/cmake-build-debug/CMakeFiles/codecrafters_http_server_c.dir
+/data/Documents/Scolaire/Ing3/Hardware_software_interface/codecrafters-http-server-c/cmake-build-debug/CMakeFiles/edit_cache.dir
+/data/Documents/Scolaire/Ing3/Hardware_software_interface/codecrafters-http-server-c/cmake-build-debug/CMakeFiles/rebuild_cache.dir
